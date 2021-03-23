@@ -1,0 +1,3 @@
+class file_stream
+{
+};
