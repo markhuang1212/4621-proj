@@ -1,6 +1,7 @@
 #include <string>
 #include <streambuf>
 #include <optional>
+#include <algorithm>
 #include "src/http_header_object.cpp"
 
 #ifndef request_parser_h
@@ -8,19 +9,22 @@
 
 class request_parser
 {
+
+private:
     bool is_header_complete = false;
 
-    std::optional<http_header_object> header;
+    std::optional<http_request_header> header;
     std::string buffer = "";
 
+public:
     void write(std::string str)
     {
         buffer.append(str);
 
         int N = buffer.size();
-        for (int i = 0; i < N - 4; i++)
+        for (int i = 0; i < N - 3; i++)
         {
-            if (str.substr(i, 4) == "\r\n\r\n")
+            if (buffer.substr(i, 4) == "\r\n\r\n")
             {
                 is_header_complete = true;
                 parse_header(buffer.substr(0, i + 4));
@@ -37,27 +41,33 @@ class request_parser
         {
             if (str[i] == ' ')
             {
-                if (method == "")
+                method = str.substr(0, i);
+                path = str.substr(i + 1);
+                for (int i = 0; path.size(); i++)
                 {
-                    method = str.substr(0, i);
+                    if (path[i] == ' ' || path[i] == '\r')
+                    {
+                        path.erase(path.begin() + i, path.end());
+                        break;
+                    }
                 }
-                else
-                {
-                    path = str.substr(method.size() + 1, i);
-                    break;
-                }
+                break;
             }
         }
 
-        http_header_object header;
+        http_request_header header;
         header.method = method;
         header.url = path;
         this->header = header;
     }
 
-    std::optional<http_header_object> read()
+    std::optional<http_request_header> getHeader()
     {
         return header;
+    }
+
+    std::optional<std::string> read(std::string encoding = "ascii")
+    {
     }
 };
 
