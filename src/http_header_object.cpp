@@ -1,15 +1,14 @@
 #include <cstring>
+#include <string>
 
-class HTTPHeaderObject
+#ifndef http_header_object_h
+#define http_header_object_h
+
+class http_header_object
 {
-
-    
-
-    HTTPHeaderObject()
-    {
-    }
-    bool hasReceivedHeader()
-    {
-        return false;
-    }
+public:
+    std::string method = "GET";
+    std::string url = "";
 };
+
+#endif
