@@ -37,6 +37,11 @@ private:
 
     void handleConnection(int connFd)
     {
+        auto filer = fdopen(connFd, "r");
+        auto filew = fdopen(connFd, "w");
+        HttpRequest req(filer);
+        HttpResponse res(filew);
+        handler(req, res);
     }
 
     void acceptConnections()
@@ -67,6 +72,11 @@ public:
     HttpServer(const function<void(HttpRequest, HttpResponse)> &handler)
         : handler(handler) {}
 
+    /**
+     * @brief The function blocks until the server starts successfully
+     * 
+     * @param port the port that the sever listens to
+     */
     void listen(int port)
     {
         if (isListening)

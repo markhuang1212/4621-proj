@@ -1,7 +1,8 @@
 {
     "files.associations": {
         "stdexcept": "cpp",
-        "queue": "cpp"
+        "queue": "cpp",
+        "functional": "cpp"
     },
     "C_Cpp.default.cppStandard": "c++17",
     "C_Cpp.default.includePath": [

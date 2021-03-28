@@ -15,8 +15,18 @@ public:
     {
     }
 
-    void operator()(const HttpRequest &req, const HttpResponse &res)
+    void operator()(HttpRequest &req, HttpResponse &res)
     {
+        if (req.getUrl() == "/")
+        {
+            res.sendFile("index.html");
+            return;
+        }
+        else
+        {
+            res.sendFile(req.getUrl().substr(1));
+            return;
+        }
     }
 };
 
