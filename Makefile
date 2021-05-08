@@ -1,2 +1,2 @@
 main:
-	gcc -g src/main.c -o src/main -lpthread
+	gcc -g -std=gnu17 src/main.c -o src/main -lpthread
