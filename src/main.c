@@ -12,6 +12,7 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <errno.h>
 
 #define SERVER_PORT (8081)
 #define LISTENNQ (8)
@@ -39,23 +40,23 @@ int ext_to_mime(char *buff, size_t buff_len)
 {
     if (strcmp(buff, "html") == 0)
     {
-        buff = "text/html";
+        strcpy(buff, "text/html");
     }
     else if (strcmp(buff, "css") == 0)
     {
-        buff = "text/css";
+        strcpy(buff, "text/css");
     }
     else if (strcmp(buff, "js") == 0)
     {
-        buff = "text/js";
+        strcpy(buff, "text/javascript");
     }
     else if (strcmp(buff, "png") == 0)
     {
-        buff = "image/png";
+        strcpy(buff, "image/png");
     }
     else
     {
-        buff = "text/plain";
+        strcpy(buff, "text/plain");
     }
 }
 
@@ -63,6 +64,12 @@ void *request_func(void *args)
 {
     /* get the connection fd */
     int connfd = *(int *)args;
+
+    if (fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK) == -1)
+    {
+        printf("Error: fnctl");
+        exit(1);
+    }
 
     // process request
     char request[MAX_REQ_LENGTH];
@@ -73,10 +80,21 @@ void *request_func(void *args)
         char buffer;
         ssize_t ret = read(connfd, &buffer, 1);
         if (ret == 0)
+            continue;
+        if (ret == -1)
         {
-            printf("Error: Read\n");
-            exit(1);
+            if (errno = EAGAIN)
+            {
+                sched_yield();
+                continue;
+            }
+            printf("Error: Read %s \n", strerror(errno));
+            close(connfd);
+            sem_post(&num_of_active_thread);
+            printf("==================== Request Ended ====================== \n");
+            return NULL;
         }
+        printf("%c", buffer);
         request[request_len] = buffer;
         request_len++;
         if (request_len >= MAX_REQ_LENGTH)
@@ -86,9 +104,7 @@ void *request_func(void *args)
         }
         int is_finished = has_request_end(request, request_len);
         if (is_finished)
-        {
             break;
-        }
     }
 
     strtok(request, " ");
@@ -125,9 +141,45 @@ void *request_func(void *args)
     {
         char path[512];
         snprintf(path, 512, "static%s", uri);
+
+        char extension[128]; // extention => mime type
+        int s = 0;
+        for (int i = strlen(path); i >= 0; i--)
+        {
+            if (path[i] == '.')
+            {
+                s = i + 1;
+                break;
+            }
+        }
+        strcpy(extension, &path[s]);
+        ext_to_mime(extension, 120);
+        printf("MIME Type: %s \n", extension);
+
         if (access(path, R_OK) == 0)
         {
             printf("File Access OK \n");
+            int page_fd = open(path, O_RDONLY);
+            struct stat st;
+            fstat(page_fd, &st);
+            size_t content_length = st.st_size;
+            char buff[512];
+            snprintf(buff, 512, "HTTP/1.1 200 OK \r\n"
+                                "Content-Type: %s \r\n"
+                                "Content-Length: %d\r\n"
+                                "\r\n",
+                     extension,
+                     content_length);
+            write(connfd, buff, strlen(buff));
+            while (true)
+            {
+                char buff[512];
+                ssize_t ret = read(page_fd, buff, 512);
+                if (ret != 0)
+                    write(connfd, buff, ret);
+                else
+                    break;
+            }
         }
         else
         {
@@ -137,7 +189,7 @@ void *request_func(void *args)
             fstat(page_fd, &st);
             size_t content_length = st.st_size;
             char buff[512];
-            snprintf(buff, 512, "HTTP/1.1 404 OK \r\n"
+            snprintf(buff, 512, "HTTP/1.1 404 Not Found \r\n"
                                 "Content-Type: text/html \r\n"
                                 "Content-Length: %d\r\n"
                                 "\r\n",
