@@ -58,6 +58,7 @@ int ext_to_mime(char *buff, size_t buff_len)
     {
         strcpy(buff, "text/plain");
     }
+    return 0;
 }
 
 void *request_func(void *args)
@@ -83,7 +84,7 @@ void *request_func(void *args)
             continue;
         if (ret == -1)
         {
-            if (errno = EAGAIN)
+            if (errno == EAGAIN)
             {
                 sched_yield();
                 continue;
@@ -117,7 +118,7 @@ void *request_func(void *args)
         int page_fd = open("static/index.html", O_RDONLY);
         struct stat st;
         fstat(page_fd, &st);
-        size_t content_length = st.st_size;
+        int content_length = st.st_size;
 
         char buff[512];
         snprintf(buff, 512, "HTTP/1.1 200 OK \r\n"
@@ -162,7 +163,7 @@ void *request_func(void *args)
             int page_fd = open(path, O_RDONLY);
             struct stat st;
             fstat(page_fd, &st);
-            size_t content_length = st.st_size;
+            int content_length = st.st_size;
             char buff[512];
             snprintf(buff, 512, "HTTP/1.1 200 OK \r\n"
                                 "Content-Type: %s \r\n"
@@ -187,7 +188,7 @@ void *request_func(void *args)
             int page_fd = open("static/404.html", O_RDONLY);
             struct stat st;
             fstat(page_fd, &st);
-            size_t content_length = st.st_size;
+            int content_length = st.st_size;
             char buff[512];
             snprintf(buff, 512, "HTTP/1.1 404 Not Found \r\n"
                                 "Content-Type: text/html \r\n"
@@ -211,6 +212,7 @@ void *request_func(void *args)
     sem_post(&num_of_active_thread);
 
     printf("==================== Request Ended ====================== \n");
+    return NULL;
 }
 
 int main(int argc, char **argv)
