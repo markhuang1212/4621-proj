@@ -1,3 +1,0 @@
-int LISTEN_PORT = 8080;
-char *LISTEN_IP = "127.0.0.1";
-int NUM_OF_THREAD = 4;
