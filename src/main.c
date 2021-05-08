@@ -6,37 +6,36 @@
 #include <time.h>
 #include <pthread.h>
 
+#include <semaphore.h>
+#include <arpa/inet.h>
+#include <unistd.h>
+
 #define SERVER_PORT (8080)
 #define LISTENNQ (8)
 #define MAXLINE (100)
 #define MAXTHREAD (8)
+#define true (1)
+#define false (0)
 
-// CONSTANT DEFINITIONS START
-
-const int PORT = 8080;
-
-// CONSTANT DEFINITIONS END
+sem_t num_of_active_thread;
 
 void *request_func(void *args)
 {
     /* get the connection fd */
-    int connfd = (int)args;
+    int connfd = *(int *)args;
     char buff[MAXLINE] = {0};
 
-    printf("heavy computation\n");
-    sleep(10);
-
-    /* prepare for the send buffer */
-    snprintf(buff, sizeof(buff) - 1, "This is the content sent to connection %d\r\n", connfd);
-
-    /* write the buffer to the connection */
-    write(connfd, buff, strlen(buff));
+    FILE* connf = fdopen(connfd, "r+");
+    fprintf(connf, "This is the content sent to connection %d\r\n", connfd);
 
     close(connfd);
+    sem_post(&num_of_active_thread);
 }
 
 int main(int argc, char **argv)
 {
+    sem_init(&num_of_active_thread, false, MAXTHREAD);
+
     int listenfd, connfd;
 
     struct sockaddr_in servaddr, cliaddr;
@@ -77,6 +76,9 @@ int main(int argc, char **argv)
     /* keep processing incoming requests */
     while (1)
     {
+        /* Wait until there is thread quota */
+        sem_wait(&num_of_active_thread);
+
         /* accept an incoming connection from the remote side */
         connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &len);
         if (connfd < 0)
@@ -90,21 +92,13 @@ int main(int argc, char **argv)
         printf("Incoming connection from %s : %hu with fd: %d\n", ip_str, ntohs(cliaddr.sin_port), connfd);
 
         /* create dedicate thread to process the request */
-        if (pthread_create(&threads[threads_count], NULL, request_func, (void *)connfd) != 0)
+        pthread_t tid;
+        if (pthread_create(&tid, NULL, request_func, &connfd) != 0)
         {
             printf("Error when creating thread %d\n", threads_count);
             return 0;
         }
-
-        if (++threads_count >= MAXTHREAD)
-        {
-            break;
-        }
-    }
-    printf("Nax thread number reached, wait for all threads to finish and exit...\n");
-    for (int i = 0; i < MAXTHREAD; ++i)
-    {
-        pthread_join(threads[i], NULL);
+        pthread_detach(tid);
     }
 
     return 0;
