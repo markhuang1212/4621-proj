@@ -124,7 +124,8 @@ void *request_func(void *args)
                 sched_yield();
                 continue;
             }
-            printf("Error: Read %s \n", strerror(errno));
+            printf("Error: Read Socket\n");
+            printf("%s \n", strerror(errno));
             close(connfd);
             sem_post(&num_of_active_thread);
             printf("==================== Request Ended ====================== \n");
@@ -153,7 +154,8 @@ void *request_func(void *args)
         int page_fd = open("static/index.html", O_RDONLY);
         if (page_fd < 0)
         {
-            printf("Read File Error\n");
+            printf("Error: Open File\n");
+            printf("%s \n", strerror(errno));
             exit(1);
         }
 
@@ -183,6 +185,8 @@ void *request_func(void *args)
             if (ret < 0)
             {
                 printf("Error: Read File\n");
+                printf("%s\n", strerror(errno));
+                close(connfd);
                 exit(1);
             }
             if (write(connfd, buff, ret) < 0)
@@ -194,8 +198,8 @@ void *request_func(void *args)
                 printf("==================== Request Ended ====================== \n");
                 return NULL;
             }
-            close(page_fd);
         }
+        close(page_fd);
     }
     else
     {
