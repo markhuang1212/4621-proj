@@ -13,18 +13,26 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <openssl/sha.h>
 
 #define SERVER_PORT (8081)
 #define LISTENNQ (8)
 #define MAXTHREAD (8)
 #define true (1)
 #define false (0)
+#define bool int
 
 const int MAX_REQ_LENGTH = 8192;
 
 sem_t num_of_active_thread;
 
-int has_request_end(char *request, size_t request_len)
+int calculate_etag(int fd, char **etag)
+{
+    // todo
+    return true;
+}
+
+bool has_request_end(char *request, size_t request_len)
 {
     if (request_len >= 4 &&
         request[request_len - 4] == '\r' &&
@@ -36,8 +44,19 @@ int has_request_end(char *request, size_t request_len)
         return false;
 }
 
+int get_content_length(int fd)
+{
+    struct stat st;
+    fstat(fd, &st);
+    return st.st_size;
+}
+
 int ext_to_mime(char *buff, size_t buff_len)
 {
+    if (buff_len <= 20)
+    {
+        return -1;
+    }
     if (strcmp(buff, "html") == 0)
     {
         strcpy(buff, "text/html");
@@ -54,6 +73,10 @@ int ext_to_mime(char *buff, size_t buff_len)
     {
         strcpy(buff, "image/png");
     }
+    else if (strcmp(buff, "pdf") == 0)
+    {
+        strcpy(buff, "application/pdf");
+    }
     else
     {
         strcpy(buff, "text/plain");
@@ -66,6 +89,7 @@ void *request_func(void *args)
     /* get the connection fd */
     int connfd = *(int *)args;
 
+    /* set socket to be non-blocking */
     if (fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK) == -1)
     {
         printf("Error: fnctl");
@@ -76,12 +100,23 @@ void *request_func(void *args)
     char request[MAX_REQ_LENGTH];
     size_t request_len = 0;
 
+    // read until request completed
     while (true)
     {
+        if (request_len >= MAX_REQ_LENGTH)
+        {
+            printf("Error: Request Size Exceed\n");
+            exit(1);
+        }
+
         char buffer;
+        // read one byte at a time
         ssize_t ret = read(connfd, &buffer, 1);
         if (ret == 0)
+        {
+            sched_yield();
             continue;
+        }
         if (ret == -1)
         {
             if (errno == EAGAIN)
@@ -98,44 +133,68 @@ void *request_func(void *args)
         printf("%c", buffer);
         request[request_len] = buffer;
         request_len++;
-        if (request_len >= MAX_REQ_LENGTH)
-        {
-            printf("Error: Request Size Exceed\n");
-            exit(1);
-        }
-        int is_finished = has_request_end(request, request_len);
+
+        bool is_finished = has_request_end(request, request_len);
         if (is_finished)
             break;
     }
 
+    // parse url
     strtok(request, " ");
     char *uri = strtok(NULL, " ");
     printf("URI: %s \n", uri);
 
+    // send response
     if (strcmp(uri, "/") == 0)
     {
         printf("Sending index.html\n");
-        int page_fd = open("static/index.html", O_RDONLY);
-        struct stat st;
-        fstat(page_fd, &st);
-        int content_length = st.st_size;
 
-        char buff[512];
-        snprintf(buff, 512, "HTTP/1.1 200 OK \r\n"
-                            "Content-Type: text/html \r\n"
-                            "Content-Length: %d\r\n"
-                            "\r\n",
+        //open file
+        int page_fd = open("static/index.html", O_RDONLY);
+        if (page_fd < 0)
+        {
+            printf("Read File Error\n");
+            exit(1);
+        }
+
+        int content_length = get_content_length(page_fd);
+
+        char buff[1024];
+        snprintf(buff, 1024, "HTTP/1.1 200 OK            \r\n"
+                             "Content-Type: text/html    \r\n"
+                             "Content-Length: %d         \r\n"
+                             "\r\n",
                  content_length);
-        write(connfd, buff, strlen(buff));
+
+        if (write(connfd, buff, strlen(buff)) < 0)
+        {
+            printf("Error: Write Socket Header\n");
+            exit(1);
+        }
 
         while (true)
         {
             char buff[512];
             ssize_t ret = read(page_fd, buff, 512);
-            if (ret != 0)
-                write(connfd, buff, ret);
-            else
+            if (ret == 0)
+            {
                 break;
+            }
+            if (ret < 0)
+            {
+                printf("Error: Read File\n");
+                exit(1);
+            }
+            if (write(connfd, buff, ret) < 0)
+            {
+                printf("Error: Write Socket\n");
+                close(connfd);
+                close(page_fd);
+                sem_post(&num_of_active_thread);
+                printf("==================== Request Ended ====================== \n");
+                return NULL;
+            }
+            close(page_fd);
         }
     }
     else
@@ -143,7 +202,7 @@ void *request_func(void *args)
         char path[512];
         snprintf(path, 512, "static%s", uri);
 
-        char extension[128]; // extention => mime type
+        char extension[512]; // extention => mime type
         int s = 0;
         for (int i = strlen(path); i >= 0; i--)
         {
@@ -154,68 +213,75 @@ void *request_func(void *args)
             }
         }
         strcpy(extension, &path[s]);
-        ext_to_mime(extension, 120);
+        ext_to_mime(extension, 512);
         printf("MIME Type: %s \n", extension);
 
         if (access(path, R_OK) == 0)
         {
             printf("File Access OK \n");
             int page_fd = open(path, O_RDONLY);
-            struct stat st;
-            fstat(page_fd, &st);
-            int content_length = st.st_size;
-            char buff[512];
-            snprintf(buff, 512, "HTTP/1.1 200 OK \r\n"
-                                "Content-Type: %s \r\n"
-                                "Content-Length: %d\r\n"
-                                "\r\n",
+            if (page_fd < 0)
+            {
+                printf("Read File Error\n");
+                exit(1);
+            }
+
+            int content_length = get_content_length(page_fd);
+
+            char buff[1024];
+            snprintf(buff, 1024, "HTTP/1.1 200 OK \r\n"
+                                 "Content-Type: %s \r\n"
+                                 "Content-Length: %d\r\n"
+                                 "\r\n",
                      extension,
                      content_length);
-            write(connfd, buff, strlen(buff));
+
+            if (write(connfd, buff, strlen(buff)) < 0)
+            {
+                printf("Error: Write Socket Header\n");
+                exit(1);
+            }
+
             while (true)
             {
                 char buff[512];
                 ssize_t ret = read(page_fd, buff, 512);
-                if (ret != 0)
-                    write(connfd, buff, ret);
-                else
+                if (ret == 0)
+                {
                     break;
+                }
+                if (ret < 0)
+                {
+                    printf("Error: Read File\n");
+                    exit(1);
+                }
+                if (write(connfd, buff, ret) < 0)
+                {
+                    printf("Error: Write Socket\n");
+                    close(connfd);
+                    close(page_fd);
+                    sem_post(&num_of_active_thread);
+                    printf("==================== Request Ended ====================== \n");
+                    return NULL;
+                }
             }
+            close(page_fd);
         }
         else
         {
             printf("Invalid File Access\n");
-            int page_fd = open("static/404.html", O_RDONLY);
-            struct stat st;
-            fstat(page_fd, &st);
-            int content_length = st.st_size;
-            char buff[512];
-            snprintf(buff, 512, "HTTP/1.1 404 Not Found \r\n"
-                                "Content-Type: text/html \r\n"
-                                "Content-Length: %d\r\n"
-                                "\r\n",
-                     content_length);
-            write(connfd, buff, strlen(buff));
-            while (true)
-            {
-                char buff[512];
-                ssize_t ret = read(page_fd, buff, 512);
-                if (ret != 0)
-                    write(connfd, buff, ret);
-                else
-                    break;
-            }
+            char msg[] = "HTTP/1.1 404 Not Found\r\n\r\n";
+            write(connfd, msg, strlen(msg));
         }
     }
 
     close(connfd);
     sem_post(&num_of_active_thread);
-
     printf("==================== Request Ended ====================== \n");
     return NULL;
 }
 
-int main(int argc, char **argv)
+int main()
 {
     sem_init(&num_of_active_thread, false, MAXTHREAD);
 
@@ -226,9 +292,6 @@ int main(int argc, char **argv)
 
     char ip_str[INET_ADDRSTRLEN] = {0};
 
-    int threads_count = 0;
-    pthread_t threads[MAXTHREAD];
-
     /* initialize server socket */
     listenfd = socket(AF_INET, SOCK_STREAM, 0); /* SOCK_STREAM : TCP */
     if (listenfd < 0)
@@ -237,6 +300,7 @@ int main(int argc, char **argv)
         return 0;
     }
 
+    /* set tcp socket option */
     int optval = 1;
     setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
 
@@ -281,7 +345,7 @@ int main(int argc, char **argv)
         pthread_t tid;
         if (pthread_create(&tid, NULL, request_func, &connfd) != 0)
         {
-            printf("Error when creating thread %d\n", threads_count);
+            printf("Error when creating thread %ld\n", tid);
             return 0;
         }
         pthread_detach(tid);
