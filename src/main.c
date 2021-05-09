@@ -125,11 +125,11 @@ void *request_func(void *args)
     int connfd = *(int *)args;
 
     /* set socket to be non-blocking */
-    if (fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK) == -1)
-    {
-        printf("Error: fnctl");
-        exit(1);
-    }
+    // if (fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK) == -1)
+    // {
+    //     printf("Error: fnctl");
+    //     exit(1);
+    // }
 
     // process request
     char request[MAX_REQ_LENGTH];
@@ -197,9 +197,10 @@ void *request_func(void *args)
         int content_length = get_content_length(page_fd);
 
         char buff[1024];
-        snprintf(buff, 1024, "HTTP/1.1 200 OK            \r\n"
-                             "Content-Type: text/html    \r\n"
-                             "Content-Length: %d         \r\n"
+        snprintf(buff, 1024, "HTTP/1.1 200 OK               \r\n"
+                             "Content-Type: text/html       \r\n"
+                             "Content-Length: %d            \r\n"
+                             "Cache-Control: max-age=3600   \r\n"
                              "\r\n",
                  content_length);
 
@@ -244,9 +245,10 @@ void *request_func(void *args)
             int content_length = get_content_length(page_fd);
 
             char buff[1024];
-            snprintf(buff, 1024, "HTTP/1.1 200 OK \r\n"
-                                 "Content-Type: %s \r\n"
-                                 "Content-Length: %d\r\n"
+            snprintf(buff, 1024, "HTTP/1.1 200 OK               \r\n"
+                                 "Content-Type: %s              \r\n"
+                                 "Content-Length: %d            \r\n"
+                                 "Cache-Control: max-age=3600   \r\n"
                                  "\r\n",
                      extension,
                      content_length);
