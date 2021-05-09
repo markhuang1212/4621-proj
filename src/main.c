@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <errno.h>
 #include <openssl/sha.h>
+#include <hiredis/hiredis.h>
 
 #define SERVER_PORT (8081)
 #define LISTENNQ (8)
@@ -35,7 +36,6 @@ int pipe_fd(int src, int dest)
     char buff[512];
     while (true)
     {
-        char buff[512];
         ssize_t ret = read(src, buff, 512);
         if (ret == 0)
         {
@@ -54,16 +54,6 @@ int pipe_fd(int src, int dest)
             return -1;
         }
     }
-    return 0;
-}
-
-/**
- * Calculate the etag of a file
- * Return 0 on success, -1 on error
- */
-int calculate_etag(int fd, char **etag)
-{
-    // todo
     return 0;
 }
 
@@ -123,13 +113,6 @@ void *request_func(void *args)
 {
     /* get the connection fd */
     int connfd = *(int *)args;
-
-    /* set socket to be non-blocking */
-    // if (fcntl(connfd, F_SETFL, fcntl(connfd, F_GETFL, 0) | O_NONBLOCK) == -1)
-    // {
-    //     printf("Error: fnctl");
-    //     exit(1);
-    // }
 
     // process request
     char request[MAX_REQ_LENGTH];
@@ -232,43 +215,42 @@ void *request_func(void *args)
         ext_to_mime(extension, 512);
         printf("MIME Type: %s \n", extension);
 
-        if (access(path, R_OK) == 0)
+        bool is404 = false;
+
+        if (access(path, R_OK) != 0)
         {
-            printf("File Access OK \n");
-            int page_fd = open(path, O_RDONLY);
-            if (page_fd < 0)
-            {
-                printf("Read File Error\n");
-                exit(1);
-            }
-
-            int content_length = get_content_length(page_fd);
-
-            char buff[1024];
-            snprintf(buff, 1024, "HTTP/1.1 200 OK               \r\n"
-                                 "Content-Type: %s              \r\n"
-                                 "Content-Length: %d            \r\n"
-                                 "Cache-Control: max-age=3600   \r\n"
-                                 "\r\n",
-                     extension,
-                     content_length);
-
-            if (write(connfd, buff, strlen(buff)) < 0)
-            {
-                printf("Error: Write Socket Header\n");
-                exit(1);
-            }
-
-            pipe_fd(page_fd, connfd);
-            close(page_fd);
-            
+            is404 = true;
+            strcpy(path, "static/404.html");
+            strcpy(extension, "text/html");
         }
-        else
+
+        int page_fd = open(path, O_RDONLY);
+        if (page_fd < 0)
         {
-            printf("Invalid File Access\n");
-            char msg[] = "HTTP/1.1 404 Not Found\r\n\r\n";
-            write(connfd, msg, strlen(msg));
+            printf("Read File Error\n");
+            exit(1);
         }
+
+        int content_length = get_content_length(page_fd);
+
+        char buff[1024];
+        snprintf(buff, 1024, "HTTP/1.1 %s                   \r\n"
+                             "Content-Type: %s              \r\n"
+                             "Content-Length: %d            \r\n"
+                             "Cache-Control: max-age=3600   \r\n"
+                             "\r\n",
+                 is404 ? "404 Not Found" : "200 OK",
+                 extension,
+                 content_length);
+
+        if (write(connfd, buff, strlen(buff)) < 0)
+        {
+            printf("Error: Write Socket Header\n");
+            exit(1);
+        }
+
+        pipe_fd(page_fd, connfd);
+        close(page_fd);
     }
 
     close(connfd);
