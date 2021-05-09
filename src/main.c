@@ -163,95 +163,64 @@ void *request_func(void *args)
     char *uri = strtok(NULL, " ");
     printf("URI: %s \n", uri);
 
-    // send response
-    if (strcmp(uri, "/") == 0)
+    char path[512];
+    snprintf(path, 512, "static%s", uri);
+
+    char extension[512]; // extention => mime type
+    int s = 0;
+    for (int i = strlen(path); i >= 0; i--)
     {
-        printf("Sending index.html\n");
-
-        //open file
-        int page_fd = open("static/index.html", O_RDONLY);
-        if (page_fd < 0)
+        if (path[i] == '.')
         {
-            printf("Error: Open File\n");
-            printf("%s \n", strerror(errno));
-            exit(1);
+            s = i + 1;
+            break;
         }
-
-        int content_length = get_content_length(page_fd);
-
-        char buff[1024];
-        snprintf(buff, 1024, "HTTP/1.1 200 OK               \r\n"
-                             "Content-Type: text/html       \r\n"
-                             "Content-Length: %d            \r\n"
-                             "Cache-Control: max-age=3600   \r\n"
-                             "\r\n",
-                 content_length);
-
-        if (write(connfd, buff, strlen(buff)) < 0)
-        {
-            printf("Error: Write Socket Header\n");
-            exit(1);
-        }
-
-        pipe_fd(page_fd, connfd);
-        close(page_fd);
     }
-    else
+    strcpy(extension, &path[s]);
+    ext_to_mime(extension, 512);
+
+    bool is404 = false;
+    if (strcmp(path, "static/") == 0)
     {
-        char path[512];
-        snprintf(path, 512, "static%s", uri);
-
-        char extension[512]; // extention => mime type
-        int s = 0;
-        for (int i = strlen(path); i >= 0; i--)
-        {
-            if (path[i] == '.')
-            {
-                s = i + 1;
-                break;
-            }
-        }
-        strcpy(extension, &path[s]);
-        ext_to_mime(extension, 512);
-        printf("MIME Type: %s \n", extension);
-
-        bool is404 = false;
-
-        if (access(path, R_OK) != 0)
-        {
-            is404 = true;
-            strcpy(path, "static/404.html");
-            strcpy(extension, "text/html");
-        }
-
-        int page_fd = open(path, O_RDONLY);
-        if (page_fd < 0)
-        {
-            printf("Read File Error\n");
-            exit(1);
-        }
-
-        int content_length = get_content_length(page_fd);
-
-        char buff[1024];
-        snprintf(buff, 1024, "HTTP/1.1 %s                   \r\n"
-                             "Content-Type: %s              \r\n"
-                             "Content-Length: %d            \r\n"
-                             "Cache-Control: max-age=3600   \r\n"
-                             "\r\n",
-                 is404 ? "404 Not Found" : "200 OK",
-                 extension,
-                 content_length);
-
-        if (write(connfd, buff, strlen(buff)) < 0)
-        {
-            printf("Error: Write Socket Header\n");
-            exit(1);
-        }
-
-        pipe_fd(page_fd, connfd);
-        close(page_fd);
+        strcpy(path, "static/index.html");
+        strcpy(extension, "text/html");
     }
+    else if (access(path, R_OK) != 0)
+    {
+        is404 = true;
+        strcpy(path, "static/404.html");
+        strcpy(extension, "text/html");
+    }
+
+    int page_fd = open(path, O_RDONLY);
+    if (page_fd < 0)
+    {
+        printf("Read File Error\n");
+        exit(1);
+    }
+
+    printf("MIME Type: %s \n", extension);
+
+    int content_length = get_content_length(page_fd);
+
+    char buff[1024];
+    snprintf(buff, 1024, "HTTP/1.1 %s                   \r\n"
+                         "Content-Type: %s              \r\n"
+                         "Content-Length: %d            \r\n"
+                         "Cache-Control: max-age=3600   \r\n"
+                         "\r\n",
+             is404 ? "404 Not Found" : "200 OK",
+             extension,
+             content_length);
+
+    if (write(connfd, buff, strlen(buff)) < 0)
+    {
+        printf("Error: Write Socket Header\n");
+        exit(1);
+    }
+
+    pipe_fd(page_fd, connfd);
+    close(page_fd);
 
     close(connfd);
     sem_post(&num_of_active_thread);
