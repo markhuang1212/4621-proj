@@ -26,10 +26,45 @@ const int MAX_REQ_LENGTH = 8192;
 
 sem_t num_of_active_thread;
 
+/**
+ * Pipe a file descriptior to another
+ * Return 0 on success, -1 on error
+ */
+int pipe_fd(int src, int dest)
+{
+    char buff[512];
+    while (true)
+    {
+        char buff[512];
+        ssize_t ret = read(src, buff, 512);
+        if (ret == 0)
+        {
+            break;
+        }
+        if (ret < 0)
+        {
+            printf("Error: Read fd\n");
+            printf("%s\n", strerror(errno));
+            return -1;
+        }
+        if (write(dest, buff, ret) < 0)
+        {
+            printf("Error: Write fd\n");
+            printf("%s\n", strerror(errno));
+            return -1;
+        }
+    }
+    return 0;
+}
+
+/**
+ * Calculate the etag of a file
+ * Return 0 on success, -1 on error
+ */
 int calculate_etag(int fd, char **etag)
 {
     // todo
-    return true;
+    return 0;
 }
 
 bool has_request_end(char *request, size_t request_len)
@@ -174,31 +209,7 @@ void *request_func(void *args)
             exit(1);
         }
 
-        while (true)
-        {
-            char buff[512];
-            ssize_t ret = read(page_fd, buff, 512);
-            if (ret == 0)
-            {
-                break;
-            }
-            if (ret < 0)
-            {
-                printf("Error: Read File\n");
-                printf("%s\n", strerror(errno));
-                close(connfd);
-                exit(1);
-            }
-            if (write(connfd, buff, ret) < 0)
-            {
-                printf("Error: Write Socket\n");
-                close(connfd);
-                close(page_fd);
-                sem_post(&num_of_active_thread);
-                printf("==================== Request Ended ====================== \n");
-                return NULL;
-            }
-        }
+        pipe_fd(page_fd, connfd);
         close(page_fd);
     }
     else
@@ -246,30 +257,9 @@ void *request_func(void *args)
                 exit(1);
             }
 
-            while (true)
-            {
-                char buff[512];
-                ssize_t ret = read(page_fd, buff, 512);
-                if (ret == 0)
-                {
-                    break;
-                }
-                if (ret < 0)
-                {
-                    printf("Error: Read File\n");
-                    exit(1);
-                }
-                if (write(connfd, buff, ret) < 0)
-                {
-                    printf("Error: Write Socket\n");
-                    close(connfd);
-                    close(page_fd);
-                    sem_post(&num_of_active_thread);
-                    printf("==================== Request Ended ====================== \n");
-                    return NULL;
-                }
-            }
+            pipe_fd(page_fd, connfd);
             close(page_fd);
+            
         }
         else
         {
