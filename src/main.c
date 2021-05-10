@@ -1,4 +1,6 @@
+/* ONLY support Linux */
 #define _GNU_SOURCE
+
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -6,7 +8,6 @@
 #include <netinet/in.h>
 #include <time.h>
 #include <pthread.h>
-
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <semaphore.h>
@@ -14,6 +15,8 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
+
+/* Require zlib library */
 #include <zlib.h>
 
 #define SERVER_PORT (8081)
@@ -26,6 +29,7 @@
 
 const int MAX_REQ_LENGTH = 8192;
 
+/* Make sure the number of threads does not exceeds a limit */
 sem_t num_of_active_thread;
 
 /**
@@ -75,10 +79,13 @@ int pipe_fd(int src, int dest)
 
     } while (flush != Z_FINISH);
     deflateEnd(&strm);
-    
+
     return 0;
 }
 
+/**
+ * Determine whether a http GET request has ended.
+ */
 bool has_request_end(char *request, size_t request_len)
 {
     if (request_len >= 4 &&
@@ -91,6 +98,9 @@ bool has_request_end(char *request, size_t request_len)
         return false;
 }
 
+/**
+ * Transfer file extension to MIME type.
+ */
 int ext_to_mime(char *buff, size_t buff_len)
 {
     if (buff_len <= 20)
@@ -113,6 +123,10 @@ int ext_to_mime(char *buff, size_t buff_len)
     {
         strcpy(buff, "image/png");
     }
+    else if (strcmp(buff, "jpg") == 0)
+    {
+        strcpy(buff, "image/jpg");
+    }
     else if (strcmp(buff, "pdf") == 0)
     {
         strcpy(buff, "application/pdf");
@@ -126,37 +140,44 @@ int ext_to_mime(char *buff, size_t buff_len)
 
 void *request_func(void *args)
 {
+    /* A thread will kill itself if the client is not responsive */
     time_t timeout = time(NULL) + 30;
 
     /* get the connection fd */
     int connfd = *(int *)args;
 
-    // process request
+    /* process request */
     char request[MAX_REQ_LENGTH];
     size_t request_len = 0;
 
-    // read until request completed
+    /* read until request completed */
     while (true)
     {
+        /* if request length exceeds limit, abort. */
         if (request_len >= (size_t)MAX_REQ_LENGTH)
         {
             printf("Error: Request Size Exceed\n");
-            exit(1);
+            close(connfd);
+            sem_post(&num_of_active_thread);
+            printf("==================== Request Ended ====================== \n");
+            return NULL;
         }
 
         char buffer;
-        // read one byte at a time
+        /* read one byte at a time */
         ssize_t ret = read(connfd, &buffer, 1);
-        if (ret == 0)
+
+        if (ret == 0) /* nothing to read */
         {
             pthread_yield();
             continue;
         }
+
         if (ret == -1)
         {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            if (errno == EAGAIN || errno == EWOULDBLOCK) /* nothing to read */
             {
-                if (time(NULL) <= timeout)
+                if (time(NULL) <= timeout) /* check timeout */
                 {
                     pthread_yield();
                     continue;
@@ -178,7 +199,7 @@ void *request_func(void *args)
             break;
     }
 
-    // parse url
+    /* parse url */
     strtok(request, " ");
     char *uri = strtok(NULL, " ");
     printf("URI: %s \n", uri);
@@ -186,6 +207,7 @@ void *request_func(void *args)
     char path[512];
     snprintf(path, 512, "static%s", uri);
 
+    /* parse extension */
     char extension[512]; // extention => mime type
     int s = 0;
     for (int i = strlen(path); i >= 0; i--)
@@ -199,6 +221,10 @@ void *request_func(void *args)
     strcpy(extension, &path[s]);
     ext_to_mime(extension, 512);
 
+    /**
+     * check if the file pointed by `path` exists
+     * If not, use 404.html
+     */
     bool is404 = false;
     if (strcmp(path, "static/") == 0)
     {
@@ -221,8 +247,6 @@ void *request_func(void *args)
 
     printf("MIME Type: %s \n", extension);
 
-    // int content_length = get_content_length(page_fd);
-
     char buff[1024];
     snprintf(buff, 1024, "HTTP/1.1 %s                   \r\n"
                          "Content-Type: %s              \r\n"
@@ -239,8 +263,8 @@ void *request_func(void *args)
     }
 
     pipe_fd(page_fd, connfd);
-    close(page_fd);
 
+    close(page_fd);
     close(connfd);
     sem_post(&num_of_active_thread);
     printf("==================== Request Ended ====================== \n");
