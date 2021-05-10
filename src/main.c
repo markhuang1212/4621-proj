@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <string.h>
 #include <sys/socket.h>
@@ -31,7 +32,7 @@ sem_t num_of_active_thread;
  * Pipe a file descriptior to another
  * Return 0 on success, -1 on error
  */
-int pipe_fd(int src, int dest)
+int pipe_fd(int src, int dest, time_t timeout)
 {
     char buff[512];
     while (true)
@@ -47,8 +48,17 @@ int pipe_fd(int src, int dest)
             printf("%s\n", strerror(errno));
             return -1;
         }
-        if (write(dest, buff, ret) < 0)
+        ssize_t ret2 = write(dest, buff, ret);
+        if (ret2 < 0)
         {
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
+            {
+                if (time(NULL) <= timeout)
+                {
+                    pthread_yield();
+                    continue;
+                }
+            }
             printf("Error: Write fd\n");
             printf("%s\n", strerror(errno));
             return -1;
@@ -111,6 +121,8 @@ int ext_to_mime(char *buff, size_t buff_len)
 
 void *request_func(void *args)
 {
+    time_t timeout = time(NULL) + 30;
+
     /* get the connection fd */
     int connfd = *(int *)args;
 
@@ -121,7 +133,7 @@ void *request_func(void *args)
     // read until request completed
     while (true)
     {
-        if (request_len >= MAX_REQ_LENGTH)
+        if (request_len >= (size_t)MAX_REQ_LENGTH)
         {
             printf("Error: Request Size Exceed\n");
             exit(1);
@@ -132,15 +144,18 @@ void *request_func(void *args)
         ssize_t ret = read(connfd, &buffer, 1);
         if (ret == 0)
         {
-            sched_yield();
+            pthread_yield();
             continue;
         }
         if (ret == -1)
         {
-            if (errno == EAGAIN)
+            if (errno == EAGAIN || errno == EWOULDBLOCK)
             {
-                sched_yield();
-                continue;
+                if (time(NULL) <= timeout)
+                {
+                    pthread_yield();
+                    continue;
+                }
             }
             printf("Error: Read Socket\n");
             printf("%s \n", strerror(errno));
@@ -219,7 +234,7 @@ void *request_func(void *args)
         exit(1);
     }
 
-    pipe_fd(page_fd, connfd);
+    pipe_fd(page_fd, connfd, timeout);
     close(page_fd);
 
     close(connfd);
@@ -277,11 +292,12 @@ int main()
         sem_wait(&num_of_active_thread);
 
         /* accept an incoming connection from the remote side */
-        connfd = accept(listenfd, (struct sockaddr *)&cliaddr, &len);
+        connfd = accept4(listenfd, (struct sockaddr *)&cliaddr, &len, SOCK_NONBLOCK);
         if (connfd < 0)
         {
+            sem_post(&num_of_active_thread);
             printf("Error: accept\n");
-            return 0;
+            continue;
         }
 
         /* print client (remote side) address (IP : port) */
@@ -292,8 +308,10 @@ int main()
         pthread_t tid;
         if (pthread_create(&tid, NULL, request_func, &connfd) != 0)
         {
+            sem_post(&num_of_active_thread);
             printf("Error when creating thread %ld\n", tid);
-            return 0;
+            close(connfd);
+            continue;
         }
         pthread_detach(tid);
     }
