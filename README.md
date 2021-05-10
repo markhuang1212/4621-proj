@@ -40,7 +40,7 @@ I first copy the source code from Lab3, then made the following major change:
 * Socket: the connection socket is non-blocking
 * Error handling: non-fatal error will not cause the server to terminate
 * Threading: Use a semaphore to count running thread. Server can run forever
-* Threading: A thread terminates itself if the server is unresponsive for 30 seconds.
+* Threading: A thread terminates itself if the client is unresponsive for 30 seconds.
 
 ## Author
 
