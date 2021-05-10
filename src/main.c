@@ -29,41 +29,84 @@ const int MAX_REQ_LENGTH = 8192;
 sem_t num_of_active_thread;
 
 /**
- * Pipe a file descriptior to another
+ * Compress the content of a
+ * file descriptor, and pipe it to another
  * Return 0 on success, -1 on error
  */
-int pipe_fd(int src, int dest, time_t timeout)
+int pipe_fd(int src, int dest)
 {
-    char buff[CHUNK];
-    while (true)
+    int ret, flush;
+    unsigned int have;
+    z_stream strm;
+    unsigned char in[CHUNK];
+    unsigned char out[CHUNK];
+
+    /* allocate deflate state */
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    ret = deflateInit(&strm, Z_DEFAULT_COMPRESSION);
+
+    do
     {
-        ssize_t ret = read(src, buff, CHUNK);
-        if (ret == 0)
-        {
-            break;
-        }
+        ret = read(src, in, CHUNK);
         if (ret < 0)
         {
-            printf("Error: Read fd\n");
+            printf("Read File Error\n");
             printf("%s\n", strerror(errno));
-            return -1;
+            exit(1);
         }
-        ssize_t ret2 = write(dest, buff, ret);
-        if (ret2 < 0)
+        strm.avail_in = ret;
+        strm.next_in = in;
+        flush = ret == 0 ? Z_FINISH : Z_NO_FLUSH;
+
+        strm.avail_out = CHUNK;
+        strm.next_out = out;
+        ret = deflate(&strm, flush);
+        have = CHUNK - strm.avail_out;
+
+        ret = write(dest, out, have);
+        if (ret < 0)
         {
-            if (errno == EAGAIN || errno == EWOULDBLOCK)
-            {
-                if (time(NULL) <= timeout)
-                {
-                    pthread_yield();
-                    continue;
-                }
-            }
-            printf("Error: Write fd\n");
+            printf("Write Socket Error\n");
             printf("%s\n", strerror(errno));
-            return -1;
+            exit(1);
         }
-    }
+
+    } while (flush != Z_FINISH);
+    deflateEnd(&strm);
+    return 0;
+
+    // char buff[CHUNK];
+    // while (true)
+    // {
+    //     ssize_t ret = read(src, buff, CHUNK);
+    //     if (ret == 0)
+    //     {
+    //         break;
+    //     }
+    //     if (ret < 0)
+    //     {
+    //         printf("Error: Read fd\n");
+    //         printf("%s\n", strerror(errno));
+    //         return -1;
+    //     }
+    //     ssize_t ret2 = write(dest, buff, ret);
+    //     if (ret2 < 0)
+    //     {
+    //         if (errno == EAGAIN || errno == EWOULDBLOCK)
+    //         {
+    //             if (time(NULL) <= timeout)
+    //             {
+    //                 pthread_yield();
+    //                 continue;
+    //             }
+    //         }
+    //         printf("Error: Write fd\n");
+    //         printf("%s\n", strerror(errno));
+    //         return -1;
+    //     }
+    // }
     return 0;
 }
 
@@ -79,12 +122,12 @@ bool has_request_end(char *request, size_t request_len)
         return false;
 }
 
-int get_content_length(int fd)
-{
-    struct stat st;
-    fstat(fd, &st);
-    return st.st_size;
-}
+// int get_content_length(int fd)
+// {
+//     struct stat st;
+//     fstat(fd, &st);
+//     return st.st_size;
+// }
 
 int ext_to_mime(char *buff, size_t buff_len)
 {
@@ -216,16 +259,16 @@ void *request_func(void *args)
 
     printf("MIME Type: %s \n", extension);
 
-    int content_length = get_content_length(page_fd);
+    // int content_length = get_content_length(page_fd);
 
     char buff[1024];
     snprintf(buff, 1024, "HTTP/1.1 %s                   \r\n"
                          "Content-Type: %s              \r\n"
                          "Cache-Control: max-age=3600   \r\n"
+                         "Content-Encoding: deflate    \r\n"
                          "\r\n",
              is404 ? "404 Not Found" : "200 OK",
-             extension,
-             content_length);
+             extension);
 
     if (write(connfd, buff, strlen(buff)) < 0)
     {
@@ -233,7 +276,7 @@ void *request_func(void *args)
         exit(1);
     }
 
-    pipe_fd(page_fd, connfd, timeout);
+    pipe_fd(page_fd, connfd);
     close(page_fd);
 
     close(connfd);
