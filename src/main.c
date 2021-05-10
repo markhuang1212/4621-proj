@@ -75,38 +75,7 @@ int pipe_fd(int src, int dest)
 
     } while (flush != Z_FINISH);
     deflateEnd(&strm);
-    return 0;
-
-    // char buff[CHUNK];
-    // while (true)
-    // {
-    //     ssize_t ret = read(src, buff, CHUNK);
-    //     if (ret == 0)
-    //     {
-    //         break;
-    //     }
-    //     if (ret < 0)
-    //     {
-    //         printf("Error: Read fd\n");
-    //         printf("%s\n", strerror(errno));
-    //         return -1;
-    //     }
-    //     ssize_t ret2 = write(dest, buff, ret);
-    //     if (ret2 < 0)
-    //     {
-    //         if (errno == EAGAIN || errno == EWOULDBLOCK)
-    //         {
-    //             if (time(NULL) <= timeout)
-    //             {
-    //                 pthread_yield();
-    //                 continue;
-    //             }
-    //         }
-    //         printf("Error: Write fd\n");
-    //         printf("%s\n", strerror(errno));
-    //         return -1;
-    //     }
-    // }
+    
     return 0;
 }
 
@@ -121,13 +90,6 @@ bool has_request_end(char *request, size_t request_len)
     else
         return false;
 }
-
-// int get_content_length(int fd)
-// {
-//     struct stat st;
-//     fstat(fd, &st);
-//     return st.st_size;
-// }
 
 int ext_to_mime(char *buff, size_t buff_len)
 {
