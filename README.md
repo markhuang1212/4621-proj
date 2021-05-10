@@ -20,7 +20,8 @@ The program can build and run on the cs lab machine.
 
 ```bash
 # Build the binary
-make
+# The default gcc on the lab machine is gcc-4, which is very old. So we use gcc9
+CC=gcc10 make
 # Run the binary
 src/main
 ```

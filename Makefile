@@ -1,2 +1,5 @@
+CC ?= gcc
+CFLAGS = -g -Wall -Wextra -std=gnu17
+
 main:
-	gcc -g -Wall -Wextra -std=gnu17 src/main.c -o src/main -lpthread -ldl -lz
+	$(CC) $(CFLAGS) src/main.c -o src/main -lpthread -ldl -lz
