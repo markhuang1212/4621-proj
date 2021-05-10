@@ -14,12 +14,12 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <openssl/sha.h>
-#include <hiredis/hiredis.h>
+#include <zlib.h>
 
 #define SERVER_PORT (8081)
 #define LISTENNQ (8)
 #define MAXTHREAD (8)
+#define CHUNK (16384)
 #define true (1)
 #define false (0)
 #define bool int
@@ -34,10 +34,10 @@ sem_t num_of_active_thread;
  */
 int pipe_fd(int src, int dest, time_t timeout)
 {
-    char buff[512];
+    char buff[CHUNK];
     while (true)
     {
-        ssize_t ret = read(src, buff, 512);
+        ssize_t ret = read(src, buff, CHUNK);
         if (ret == 0)
         {
             break;
@@ -221,7 +221,6 @@ void *request_func(void *args)
     char buff[1024];
     snprintf(buff, 1024, "HTTP/1.1 %s                   \r\n"
                          "Content-Type: %s              \r\n"
-                         "Content-Length: %d            \r\n"
                          "Cache-Control: max-age=3600   \r\n"
                          "\r\n",
              is404 ? "404 Not Found" : "200 OK",
