@@ -41,6 +41,7 @@ I first copy the source code from Lab3, then made the following major change:
 * Error handling: non-fatal error will not cause the server to terminate
 * Threading: Use a semaphore to count running thread. Server can run forever
 * Threading: A thread terminates itself if the client is unresponsive for 30 seconds.
+* Security: HTTP Requests like `GET /../../../../../etc/passwd HTTP/1.1` will be rejected with 404.
 
 ## Caevats
 

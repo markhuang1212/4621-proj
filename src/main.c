@@ -138,6 +138,18 @@ int ext_to_mime(char *buff, size_t buff_len)
     return 0;
 }
 
+bool is_url_secure(char *url, int buff_size)
+{
+    for (int i = 0; i < buff_size - 2; i++)
+    {
+        if (url[i] == '.' && url[i + 1] == '.' && url[i + 2] == '/')
+            return false;
+        if (url[i] == 0)
+            return true;
+    }
+    return true;
+}
+
 void *request_func(void *args)
 {
     /* A thread will kill itself if the client is not responsive */
@@ -223,6 +235,7 @@ void *request_func(void *args)
 
     /**
      * check if the file pointed by `path` exists
+     * check if the file pointed by `path` is secure
      * If not, use 404.html
      */
     bool is404 = false;
@@ -232,6 +245,12 @@ void *request_func(void *args)
         strcpy(extension, "text/html");
     }
     else if (access(path, R_OK) != 0)
+    {
+        is404 = true;
+        strcpy(path, "static/404.html");
+        strcpy(extension, "text/html");
+    }
+    else if (is_url_secure(path, 512) == false)
     {
         is404 = true;
         strcpy(path, "static/404.html");
@@ -317,6 +336,9 @@ int main()
         printf("Error: listen\n");
         return 0;
     }
+
+    printf("The HTTP server is listening at port %d\n", SERVER_PORT);
+    printf("Files inside ./static will be served\n");
 
     /* keep processing incoming requests */
     while (1)
