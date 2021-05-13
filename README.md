@@ -25,7 +25,7 @@ The program can be built and run on the cse lab machine, or any Linux machine wi
 # Use the newest version of gcc available on the lab machine
 echo "CC=gcc10 make" | bash
 # Run the binary
-./src/main
+echo "SERVER_PORT=8081 src/main" | bash
 ```
 
 ## Implementation
@@ -41,6 +41,10 @@ I first copy the source code from Lab3, then made the following major change:
 * Error handling: non-fatal error will not cause the server to terminate
 * Threading: Use a semaphore to count running thread. Server can run forever
 * Threading: A thread terminates itself if the client is unresponsive for 30 seconds.
+
+## Caevats
+
+The url in the HTTP request does not accept the `%XX` format. Only non-reserved ASCII character is allowed. 
 
 ## Author
 

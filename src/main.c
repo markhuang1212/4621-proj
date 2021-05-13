@@ -19,7 +19,6 @@
 /* Require zlib library */
 #include <zlib.h>
 
-#define SERVER_PORT (8081)
 #define LISTENNQ (8)
 #define MAXTHREAD (8)
 #define CHUNK (16384)
@@ -27,7 +26,8 @@
 #define false (0)
 #define bool int
 
-const int MAX_REQ_LENGTH = 8192;
+int SERVER_PORT = 8081;
+int MAX_REQ_LENGTH = 8192;
 
 /* Make sure the number of threads does not exceeds a limit */
 sem_t num_of_active_thread;
@@ -273,6 +273,11 @@ void *request_func(void *args)
 
 int main()
 {
+
+    char *port_str = getenv("SERVER_PORT");
+    if (port_str != NULL)
+        SERVER_PORT = atoi(port_str);
+
     sem_init(&num_of_active_thread, false, MAXTHREAD);
 
     int listenfd, connfd;
