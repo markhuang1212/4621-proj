@@ -1,5 +1,7 @@
 # HTTP Server
 
+> This project was a course assignment of COMP4621(Networking) at HKUST.
+
 The source code is at `src/main.c`.
 
 ## Features
