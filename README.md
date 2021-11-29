@@ -1,6 +1,6 @@
 # HTTP Server
 
-> This project starts as a course assignment, but I aims to achieve more during the process.
+> This project starts as a course assignment, but I also aimed to achieve and learn more during the process.
 
 The source code is at `src/main.c`.
 
