@@ -1,6 +1,6 @@
 # HTTP Server
 
-> This project was a course assignment of COMP4621(Networking) at HKUST.
+> This project starts as a course assignment, but I aims to achieve more during the process.
 
 The source code is at `src/main.c`.
 
